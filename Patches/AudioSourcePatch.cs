@@ -8,7 +8,44 @@ namespace VASoundTool.Patches
     [HarmonyPatch(typeof(AudioSource))]
     internal class AudioSourcePatch
     {
-        private static Dictionary<string, AudioClip> originalClips = new Dictionary<string, AudioClip>();
+        private static Dictionary<string, AudioClip> originalClips = [];
+
+        [HarmonyPatch(nameof(AudioSource.PlayOneShot), new [] { typeof(AudioClip) })]
+        [HarmonyPrefix]
+
+        public static void PlayOneShot_Patch(AudioSource __instance, ref AudioClip clip)
+        {
+            //RunDynamicClipReplacement(__instance);
+            AudioClip replacement = GetReplacement(clip);
+            DebugPlayOneShotMethod(__instance, clip);
+            if (replacement != null)
+            {
+                clip = replacement;
+            }
+        }
+
+        [HarmonyPatch(nameof(AudioSource.PlayOneShot), new[] { typeof(AudioClip), typeof(float) })]
+        [HarmonyPrefix]
+
+        public static void PlayOneShot_VolumeScale_Patch(AudioSource __instance, ref AudioClip clip)
+        {
+            //RunDynamicClipReplacement(__instance);
+            AudioClip replacement = GetReplacement(clip);
+            DebugPlayOneShotMethod(__instance, clip);
+            if (replacement != null)
+            {
+                clip = replacement;
+            }
+        }
+
+        [HarmonyPatch(nameof(AudioSource.PlayScheduled), new[] { typeof(double) })]
+        [HarmonyPrefix]
+
+        public static void PlayScheduled_Patch(AudioSource __instance, double time)
+        {
+            RunDynamicClipReplacement(__instance);
+            DebugPlayScheduled(__instance, time);
+        }
 
         [HarmonyPatch(nameof(AudioSource.Play), new Type[] { })]
         [HarmonyPrefix]
@@ -58,6 +95,34 @@ namespace VASoundTool.Patches
             UnityEngine.Object.Destroy(gameObject, clip.length * ((Time.timeScale < 0.01f) ? 0.01f : Time.timeScale));
 
             return false;
+        }
+
+        private static void DebugPlayScheduled(AudioSource instance, double time)
+        {
+            if (instance == null)
+                return;
+
+            if (SoundTool.debugAudioSources && !SoundTool.indepthDebugging && instance != null)
+            {
+                SoundTool.Instance.logger.LogDebug($"{instance} at {instance.transform.root} is playing {instance.clip.name} with schedule {time}");
+            }
+            else if (SoundTool.indepthDebugging && instance != null)
+            {
+                SoundTool.Instance.logger.LogDebug($"{instance} is playing {instance.clip.name} with schedule {time}  at");
+
+                Transform start = instance.transform;
+
+                while (start.parent != null || start != instance.transform.root)
+                {
+                    SoundTool.Instance.logger.LogDebug($"--- {start.parent}");
+                    start = start.parent;
+                }
+
+                if (start == instance.transform.root)
+                {
+                    SoundTool.Instance.logger.LogDebug($"--- {instance.transform.root}");
+                }
+            }
         }
 
         private static void DebugPlayMethod(AudioSource instance)
@@ -170,6 +235,71 @@ namespace VASoundTool.Patches
                     SoundTool.Instance.logger.LogDebug($"--- {source.transform.root}");
                 }
             }
+        }
+
+        private static AudioClip GetReplacement(AudioClip clip)
+        {
+            if (clip == null)
+                return null;
+
+            string clipName = clip.name;
+
+            // Check if clipName exists in the dictionary
+            if (SoundTool.replacedClips.ContainsKey(clipName))
+            {
+                if (!originalClips.ContainsKey(clipName))
+                {
+                    originalClips.Add(clipName, clip);
+                }
+
+                List<RandomAudioClip> randomAudioClip = SoundTool.replacedClips[clipName];
+
+                // Calculate total chance
+                float totalChance = 0f;
+                foreach (RandomAudioClip rc in randomAudioClip)
+                {
+                    totalChance += rc.chance;
+                }
+
+                // Generate a random value between 0 and totalChance
+                float randomValue = UnityEngine.Random.Range(0f, totalChance);
+
+                // Choose the clip based on the random value and chances
+                foreach (RandomAudioClip rc in randomAudioClip)
+                {
+                    if (randomValue <= rc.chance)
+                    {
+                        return rc.clip;
+                    }
+
+                    // Subtract the chance of the current clip from randomValue
+                    randomValue -= rc.chance;
+                }
+            }
+            // If clipName doesn't exist in the dictionary, check if it exists in the original clips if so use that and remove it
+            else if (originalClips.ContainsKey(clipName))
+            {
+                AudioClip originClip = originalClips[clipName];
+                originalClips.Remove(clipName);
+                return originClip;
+            }
+
+            return null;
+
+            /*if (SoundTool.replacedClips.ContainsKey(clipName))
+            {
+                if (!originalClips.ContainsKey(clipName))
+                {
+                    originalClips.Add(clipName, instance.clip);
+                }
+
+                instance.clip = SoundTool.replacedClips[clipName];
+            }
+            else if (originalClips.ContainsKey(clipName))
+            {
+                instance.clip = originalClips[clipName];
+                originalClips.Remove(clipName);
+            }*/
         }
 
         private static void RunDynamicClipReplacement(AudioSource instance)

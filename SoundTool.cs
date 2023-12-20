@@ -14,7 +14,7 @@ using VASoundTool.Utilities;
 
 namespace VASoundTool
 {
-    [BepInPlugin("tairasoul.vasoundtool", "VASoundTool", "1.0.0")]
+    [BepInPlugin("tairasoul.vasoundtool", "VASoundTool", "1.1.0")]
     public class SoundTool : BaseUnityPlugin
     {
         private ConfigEntry<float> configPlayOnAwakePatchRepeatDelay;
@@ -236,7 +236,7 @@ namespace VASoundTool
         public AudioSource[] GetAllPlayOnAwakeAudioSources()
         {
             AudioSource[] sources = FindObjectsOfType<AudioSource>(true);
-            List<AudioSource> results = new List<AudioSource>();
+            List<AudioSource> results = new();
 
             for (int i = 0; i < sources.Length; i++)
             {
@@ -299,7 +299,7 @@ namespace VASoundTool
             // If the clipName doesn't exist, create a new entry in the dictionary
             else
             {
-                replacedClips[originalName] = new List<RandomAudioClip> { new RandomAudioClip(newClip, chance) };
+                replacedClips[originalName] = [new(newClip, chance)];
             }
 
             float totalChance = 0;
